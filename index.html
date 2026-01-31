@@ -14,16 +14,41 @@
   <div id="ui">
     <div id="hud" style="display: none;">
       <div class="hud-item">
-        <div class="hud-label">SCORE</div>
-        <div class="hud-value" id="score">0</div>
-      </div>
-      <div class="hud-item">
-        <div class="hud-label">SPEED</div>
-        <div class="hud-value" id="speed">0</div>
-      </div>
-      <div class="hud-item">
         <div class="hud-label">DISTANCE</div>
         <div class="hud-value" id="distance">0</div>
+      </div>
+      
+      <!-- Speedometer -->
+      <div class="speedometer">
+        <svg viewBox="0 0 200 120" class="speedometer-svg">
+          <!-- Background arc -->
+          <path class="speedometer-bg" d="M 20 100 A 80 80 0 0 1 180 100" />
+          <!-- Speed arc (animated) -->
+          <path class="speedometer-fill" id="speedArc" d="M 20 100 A 80 80 0 0 1 20 100" />
+          <!-- Tick marks -->
+          <g class="speedometer-ticks">
+            <line x1="28" y1="85" x2="35" y2="78" />
+            <line x1="45" y1="55" x2="52" y2="50" />
+            <line x1="75" y1="30" x2="80" y2="25" />
+            <line x1="100" y1="22" x2="100" y2="15" />
+            <line x1="125" y1="30" x2="120" y2="25" />
+            <line x1="155" y1="55" x2="148" y2="50" />
+            <line x1="172" y1="85" x2="165" y2="78" />
+          </g>
+          <!-- Speed labels -->
+          <text x="25" y="105" class="speed-label">0</text>
+          <text x="40" y="60" class="speed-label">50</text>
+          <text x="90" y="25" class="speed-label">100</text>
+          <text x="150" y="60" class="speed-label">150</text>
+          <text x="168" y="105" class="speed-label">200</text>
+          <!-- Needle -->
+          <line class="speedometer-needle" id="speedNeedle" x1="100" y1="100" x2="30" y2="90" />
+          <circle class="speedometer-center" cx="100" cy="100" r="8" />
+        </svg>
+        <div class="speedometer-value">
+          <span id="speed">0</span>
+          <span class="speedometer-unit">KM/H</span>
+        </div>
       </div>
     </div>
 
