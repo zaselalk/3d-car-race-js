@@ -13,6 +13,15 @@ let environmentObjects = [];
 let lastTreeZ = 10;
 let ground;
 
+// Road curve system
+let roadSegments = [];
+let roadCurveOffset = 0;
+let currentRoadX = 0;
+let targetRoadX = 0;
+let roadCurveSpeed = 0;
+const ROAD_SEGMENT_LENGTH = 10;
+const ROAD_VISIBLE_SEGMENTS = 60;
+
 // Audio state
 let audioContext;
 let masterGain;
@@ -972,17 +981,20 @@ function createNatureElements() {
 
 // Generate environment objects at a specific Z position
 function generateEnvironmentAtZ(z) {
-    // Left side trees
+    // Get road curve offset at this Z position
+    const curveX = getRoadCurveAt(z);
+
+    // Left side trees (relative to curved road)
     if (Math.random() > 0.3) {
-        const tree = createTree(-5 - Math.random() * 3, z);
+        const tree = createTree(curveX - 5 - Math.random() * 3, z);
         tree.userData.isEnvironment = true;
         environmentObjects.push(tree);
         scene.add(tree);
     }
 
-    // Right side trees
+    // Right side trees (relative to curved road)
     if (Math.random() > 0.3) {
-        const tree = createTree(5 + Math.random() * 3, z);
+        const tree = createTree(curveX + 5 + Math.random() * 3, z);
         tree.userData.isEnvironment = true;
         environmentObjects.push(tree);
         scene.add(tree);
@@ -990,14 +1002,14 @@ function generateEnvironmentAtZ(z) {
 
     // Bushes
     if (Math.random() > 0.5) {
-        const bush = createBush(-4 - Math.random() * 2, z + Math.random() * 2);
+        const bush = createBush(curveX - 4 - Math.random() * 2, z + Math.random() * 2);
         bush.userData.isEnvironment = true;
         environmentObjects.push(bush);
         scene.add(bush);
     }
 
     if (Math.random() > 0.5) {
-        const bush = createBush(4 + Math.random() * 2, z + Math.random() * 2);
+        const bush = createBush(curveX + 4 + Math.random() * 2, z + Math.random() * 2);
         bush.userData.isEnvironment = true;
         environmentObjects.push(bush);
         scene.add(bush);
@@ -1005,14 +1017,14 @@ function generateEnvironmentAtZ(z) {
 
     // Rocks
     if (Math.random() > 0.7) {
-        const rock = createRock(-4.5 - Math.random() * 2, z + Math.random() * 2);
+        const rock = createRock(curveX - 4.5 - Math.random() * 2, z + Math.random() * 2);
         rock.userData.isEnvironment = true;
         environmentObjects.push(rock);
         scene.add(rock);
     }
 
     if (Math.random() > 0.7) {
-        const rock = createRock(4.5 + Math.random() * 2, z + Math.random() * 2);
+        const rock = createRock(curveX + 4.5 + Math.random() * 2, z + Math.random() * 2);
         rock.userData.isEnvironment = true;
         environmentObjects.push(rock);
         scene.add(rock);
@@ -1020,14 +1032,14 @@ function generateEnvironmentAtZ(z) {
 
     // Buildings (less frequent, further from road)
     if (Math.random() > 0.85) {
-        const building = createBuilding(-10 - Math.random() * 8, z);
+        const building = createBuilding(curveX - 10 - Math.random() * 8, z);
         building.userData.isEnvironment = true;
         environmentObjects.push(building);
         scene.add(building);
     }
 
     if (Math.random() > 0.85) {
-        const building = createBuilding(10 + Math.random() * 8, z);
+        const building = createBuilding(curveX + 10 + Math.random() * 8, z);
         building.userData.isEnvironment = true;
         environmentObjects.push(building);
         scene.add(building);
@@ -1039,12 +1051,13 @@ function updateEnvironment() {
     // Move ground with the car - larger offset for bigger ground
     if (ground) {
         ground.position.z = playerCar.position.z - 300;
+        // Also move ground X to follow road curve center
+        const avgCurve = getRoadCurveAt(playerCar.position.z - 100);
+        ground.position.x = avgCurve;
     }
 
-    // Move road with the car
-    if (road) {
-        road.position.z = playerCar.position.z - 300;
-    }
+    // Update road curves
+    updateRoadCurves();
 
     // Generate new environment ahead of the car
     if (playerCar.position.z < lastTreeZ - 5) {
@@ -1062,25 +1075,40 @@ function updateEnvironment() {
     });
 }
 
-// Create the road
+// Create the curved road
 function createRoad() {
-    const roadGroup = new THREE.Group();
+    road = new THREE.Group();
 
-    // Road shoulder/dirt edge - slightly wider than road
-    const shoulderGeometry = new THREE.PlaneGeometry(8, 600);
+    // Initialize road segments
+    for (let i = 0; i < ROAD_VISIBLE_SEGMENTS; i++) {
+        const segment = createRoadSegment(i);
+        roadSegments.push(segment);
+        road.add(segment.group);
+    }
+
+    scene.add(road);
+    updateRoadCurves();
+}
+
+// Create a single road segment
+function createRoadSegment(index) {
+    const segmentGroup = new THREE.Group();
+    const z = -index * ROAD_SEGMENT_LENGTH;
+
+    // Road shoulder/dirt edge
+    const shoulderGeometry = new THREE.PlaneGeometry(9, ROAD_SEGMENT_LENGTH + 0.5);
     const shoulderMaterial = new THREE.MeshStandardMaterial({
         color: 0x5a4a3a,
         roughness: 0.95
     });
     const shoulder = new THREE.Mesh(shoulderGeometry, shoulderMaterial);
     shoulder.rotation.x = -Math.PI / 2;
-    shoulder.position.z = -300;
     shoulder.position.y = -0.02;
     shoulder.receiveShadow = true;
-    roadGroup.add(shoulder);
+    segmentGroup.add(shoulder);
 
-    // Main road - asphalt texture look
-    const roadGeometry = new THREE.PlaneGeometry(6.5, 600);
+    // Main road asphalt
+    const roadGeometry = new THREE.PlaneGeometry(7, ROAD_SEGMENT_LENGTH + 0.5);
     const roadMaterial = new THREE.MeshStandardMaterial({
         color: 0x2a2a35,
         roughness: 0.85,
@@ -1088,40 +1116,33 @@ function createRoad() {
     });
     const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
     roadMesh.rotation.x = -Math.PI / 2;
-    roadMesh.position.z = -300;
     roadMesh.position.y = 0;
     roadMesh.receiveShadow = true;
-    roadGroup.add(roadMesh);
+    segmentGroup.add(roadMesh);
 
-    // Road markings - center dashed line
-    for (let i = 0; i < 120; i++) {
-        const lineGeometry = new THREE.BoxGeometry(0.15, 0.02, 2.5);
-        const lineMaterial = new THREE.MeshStandardMaterial({
-            color: 0xffffff,
-            roughness: 0.5
-        });
-        const line = new THREE.Mesh(lineGeometry, lineMaterial);
-        line.position.set(0, 0.01, -i * 5);
-        roadGroup.add(line);
-    }
-
-    // White edge lines (continuous)
-    const edgeLineGeometry = new THREE.BoxGeometry(0.1, 0.02, 600);
-    const edgeLineMaterial = new THREE.MeshStandardMaterial({
+    // Center dashed line
+    const lineGeometry = new THREE.BoxGeometry(0.15, 0.02, 3);
+    const lineMaterial = new THREE.MeshStandardMaterial({
         color: 0xffffff,
         roughness: 0.5
     });
+    const centerLine = new THREE.Mesh(lineGeometry, lineMaterial);
+    centerLine.position.y = 0.01;
+    segmentGroup.add(centerLine);
 
-    const leftEdgeLine = new THREE.Mesh(edgeLineGeometry, edgeLineMaterial);
-    leftEdgeLine.position.set(-3.0, 0.01, -300);
-    roadGroup.add(leftEdgeLine);
+    // Left edge line
+    const edgeGeometry = new THREE.BoxGeometry(0.1, 0.02, ROAD_SEGMENT_LENGTH);
+    const leftEdge = new THREE.Mesh(edgeGeometry, lineMaterial);
+    leftEdge.position.set(-3.2, 0.01, 0);
+    segmentGroup.add(leftEdge);
 
-    const rightEdgeLine = new THREE.Mesh(edgeLineGeometry, edgeLineMaterial);
-    rightEdgeLine.position.set(3.0, 0.01, -300);
-    roadGroup.add(rightEdgeLine);
+    // Right edge line
+    const rightEdge = new THREE.Mesh(edgeGeometry, lineMaterial);
+    rightEdge.position.set(3.2, 0.01, 0);
+    segmentGroup.add(rightEdge);
 
-    // Guard rails for realism
-    const guardRailGeometry = new THREE.BoxGeometry(0.15, 0.4, 600);
+    // Guard rails
+    const guardRailGeometry = new THREE.BoxGeometry(0.15, 0.4, ROAD_SEGMENT_LENGTH);
     const guardRailMaterial = new THREE.MeshStandardMaterial({
         color: 0x888888,
         metalness: 0.6,
@@ -1129,17 +1150,70 @@ function createRoad() {
     });
 
     const leftGuardRail = new THREE.Mesh(guardRailGeometry, guardRailMaterial);
-    leftGuardRail.position.set(-3.5, 0.2, -300);
+    leftGuardRail.position.set(-3.8, 0.2, 0);
     leftGuardRail.castShadow = true;
-    roadGroup.add(leftGuardRail);
+    segmentGroup.add(leftGuardRail);
 
     const rightGuardRail = new THREE.Mesh(guardRailGeometry, guardRailMaterial);
-    rightGuardRail.position.set(3.5, 0.2, -300);
+    rightGuardRail.position.set(3.8, 0.2, 0);
     rightGuardRail.castShadow = true;
-    roadGroup.add(rightGuardRail);
+    segmentGroup.add(rightGuardRail);
 
-    road = roadGroup;
-    scene.add(road);
+    segmentGroup.position.z = z;
+
+    return {
+        group: segmentGroup,
+        baseZ: z,
+        curveX: 0,
+        index: index
+    };
+}
+
+// Generate curve offset for a position
+function getRoadCurveAt(z) {
+    // Use multiple sine waves for natural-looking curves
+    const curve1 = Math.sin(z * 0.008) * 12;
+    const curve2 = Math.sin(z * 0.003 + 1.5) * 8;
+    const curve3 = Math.sin(z * 0.015) * 4;
+    return curve1 + curve2 + curve3;
+}
+
+// Get road direction (tangent) at a position
+function getRoadDirectionAt(z) {
+    const delta = 0.1;
+    const x1 = getRoadCurveAt(z - delta);
+    const x2 = getRoadCurveAt(z + delta);
+    return Math.atan2(x2 - x1, delta * 2);
+}
+
+// Update road segment positions based on player position
+function updateRoadCurves() {
+    const playerZ = playerCar ? playerCar.position.z : 0;
+
+    roadSegments.forEach((segment, index) => {
+        // Calculate segment's world Z position
+        let segmentZ = playerZ - (index - 5) * ROAD_SEGMENT_LENGTH;
+
+        // Wrap segments that are too far behind to the front
+        while (segmentZ > playerZ + ROAD_SEGMENT_LENGTH * 10) {
+            segmentZ -= ROAD_VISIBLE_SEGMENTS * ROAD_SEGMENT_LENGTH;
+        }
+        while (segmentZ < playerZ - ROAD_SEGMENT_LENGTH * (ROAD_VISIBLE_SEGMENTS - 10)) {
+            segmentZ += ROAD_VISIBLE_SEGMENTS * ROAD_SEGMENT_LENGTH;
+        }
+
+        segment.group.position.z = segmentZ;
+
+        // Apply curve offset
+        const curveX = getRoadCurveAt(segmentZ);
+        segment.group.position.x = curveX;
+
+        // Rotate segment to follow curve direction
+        const direction = getRoadDirectionAt(segmentZ);
+        segment.group.rotation.y = direction;
+
+        segment.curveX = curveX;
+    });
 }
 
 // Create player car - Modern BMW-style sedan
@@ -1450,27 +1524,53 @@ function updateGame() {
         speed = Math.max(speed - acceleration * 2, 0);
     }
 
-    // Move player car with smooth steering
+    // Get road curve at car's position
+    const roadCurveAtCar = getRoadCurveAt(playerCar.position.z);
+    const roadDirection = getRoadDirectionAt(playerCar.position.z);
+
+    // Calculate lane offset (car's position relative to road center)
+    // Store lane position separately from world position
+    if (playerCar.userData.laneOffset === undefined) {
+        playerCar.userData.laneOffset = 0;
+    }
+
+    // Move player car with smooth steering (within lane bounds)
     let targetTilt = 0;
+    const steerSpeed = 0.08 * (1 + speed * 0.3);
+
     if (keys['ArrowLeft']) {
-        playerCar.position.x = Math.max(playerCar.position.x - 0.08 * (1 + speed * 0.3), -2.8);
+        playerCar.userData.laneOffset = Math.max(playerCar.userData.laneOffset - steerSpeed, -2.8);
         targetTilt = 0.08;
     }
     if (keys['ArrowRight']) {
-        playerCar.position.x = Math.min(playerCar.position.x + 0.08 * (1 + speed * 0.3), 2.8);
+        playerCar.userData.laneOffset = Math.min(playerCar.userData.laneOffset + steerSpeed, 2.8);
         targetTilt = -0.08;
     }
+
     // Smooth car tilt when turning
     playerCar.rotation.z += (targetTilt - playerCar.rotation.z) * 0.1;
 
     // Auto-move car forward
     playerCar.position.z -= speed * 0.5;
 
-    // Move camera to follow car - positioned lower and looking ahead
-    camera.position.z = playerCar.position.z + 6;
-    camera.position.x = playerCar.position.x * 0.4;
-    camera.position.y = 2.0 + speed * 0.3; // Slight camera lift at higher speeds
-    camera.lookAt(playerCar.position.x * 0.5, 0.5, playerCar.position.z - 8);
+    // Update car X position to follow road curve + lane offset
+    playerCar.position.x = roadCurveAtCar + playerCar.userData.laneOffset;
+
+    // Rotate car to follow road direction
+    const targetRotation = Math.PI + roadDirection;
+    playerCar.rotation.y += (targetRotation - playerCar.rotation.y) * 0.1;
+
+    // Move camera to follow car along the curved road
+    const cameraZ = playerCar.position.z + 6;
+    const cameraCurve = getRoadCurveAt(cameraZ);
+    camera.position.z = cameraZ;
+    camera.position.x = cameraCurve + playerCar.userData.laneOffset * 0.4;
+    camera.position.y = 2.0 + speed * 0.3;
+
+    // Look ahead along the curve
+    const lookAheadZ = playerCar.position.z - 8;
+    const lookAheadCurve = getRoadCurveAt(lookAheadZ);
+    camera.lookAt(lookAheadCurve + playerCar.userData.laneOffset * 0.3, 0.5, lookAheadZ);
 
     // Rotate wheels
     playerCar.children.forEach((child) => {
@@ -1516,9 +1616,16 @@ function startGame() {
     initAudio();
     playStartEngineSound();
 
-    // Reset player position
-    playerCar.position.set(0, 0, 2);
+    // Reset player position and lane offset
+    const startCurve = getRoadCurveAt(2);
+    playerCar.position.set(startCurve, 0, 2);
     playerCar.rotation.z = 0;
+    playerCar.rotation.y = Math.PI;
+    playerCar.userData.laneOffset = 0;
+
+    // Reset road segments
+    lastTreeZ = 10;
+    updateRoadCurves();
 }
 
 // Restart game
