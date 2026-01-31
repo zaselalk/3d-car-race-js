@@ -28,6 +28,16 @@ let roadCurveSpeed = 0;
 const ROAD_SEGMENT_LENGTH = 10;
 const ROAD_VISIBLE_SEGMENTS = 60;
 
+// Traffic light system
+let trafficLights = [];
+let lastTrafficLightZ = -50;
+const TRAFFIC_LIGHT_SPACING = 80; // Distance between traffic lights
+let ranRedLights = 0; // Penalty counter
+
+// Crossroad system
+let crossroads = [];
+let lastCrossroadZ = -100;
+
 // Audio state
 let audioContext;
 let masterGain;
@@ -623,6 +633,320 @@ function createRock(x, z) {
     );
 
     return rock;
+}
+
+// Create traffic light
+function createTrafficLight(x, z, side) {
+    const lightGroup = new THREE.Group();
+
+    // Pole
+    const poleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        metalness: 0.7,
+        roughness: 0.3
+    });
+    const poleGeometry = new THREE.CylinderGeometry(0.08, 0.1, 4, 8);
+    const pole = new THREE.Mesh(poleGeometry, poleMaterial);
+    pole.position.y = 2;
+    pole.castShadow = true;
+    lightGroup.add(pole);
+
+    // Horizontal arm extending over road
+    const armGeometry = new THREE.CylinderGeometry(0.05, 0.05, 3.5, 8);
+    const arm = new THREE.Mesh(armGeometry, poleMaterial);
+    arm.rotation.z = Math.PI / 2;
+    arm.position.set(side * -1.75, 3.8, 0);
+    arm.castShadow = true;
+    lightGroup.add(arm);
+
+    // Traffic light housing
+    const housingMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1a1a1a,
+        metalness: 0.3,
+        roughness: 0.7
+    });
+    const housingGeometry = new THREE.BoxGeometry(0.4, 1.0, 0.3);
+    const housing = new THREE.Mesh(housingGeometry, housingMaterial);
+    housing.position.set(side * -2.5, 3.5, 0);
+    housing.castShadow = true;
+    lightGroup.add(housing);
+
+    // Light bulbs (red, yellow, green)
+    const lightRadius = 0.1;
+    const lightPositions = [
+        { y: 3.8, color: 0x330000, emissive: 0xff0000, name: 'red' },
+        { y: 3.5, color: 0x332200, emissive: 0xffaa00, name: 'yellow' },
+        { y: 3.2, color: 0x003300, emissive: 0x00ff00, name: 'green' }
+    ];
+
+    lightPositions.forEach(light => {
+        const bulbGeometry = new THREE.SphereGeometry(lightRadius, 12, 12);
+        const bulbMaterial = new THREE.MeshStandardMaterial({
+            color: light.color,
+            emissive: 0x000000,
+            emissiveIntensity: 0,
+            roughness: 0.3,
+            metalness: 0.1
+        });
+        const bulb = new THREE.Mesh(bulbGeometry, bulbMaterial);
+        bulb.position.set(side * -2.5, light.y, 0.16);
+        bulb.userData.lightType = light.name;
+        bulb.userData.emissiveColor = light.emissive;
+        lightGroup.add(bulb);
+    });
+
+    // Visor/hood for each light
+    const visorGeometry = new THREE.BoxGeometry(0.25, 0.08, 0.15);
+    const visorMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 });
+    [3.8, 3.5, 3.2].forEach(y => {
+        const visor = new THREE.Mesh(visorGeometry, visorMaterial);
+        visor.position.set(side * -2.5, y + 0.12, 0.2);
+        lightGroup.add(visor);
+    });
+
+    lightGroup.position.set(x, 0, z);
+    lightGroup.userData.isTrafficLight = true;
+    lightGroup.userData.state = 'green'; // Initial state
+    lightGroup.userData.timer = Math.random() * 5; // Randomize initial timing
+    lightGroup.userData.worldZ = z;
+    lightGroup.userData.passed = false;
+
+    return lightGroup;
+}
+
+// Update traffic light state
+function updateTrafficLightState(trafficLight, deltaTime) {
+    trafficLight.userData.timer += deltaTime;
+
+    // Traffic light cycle: green (5s) -> yellow (2s) -> red (5s) -> green
+    const cycleTime = trafficLight.userData.timer % 12;
+    let newState;
+
+    if (cycleTime < 5) {
+        newState = 'green';
+    } else if (cycleTime < 7) {
+        newState = 'yellow';
+    } else {
+        newState = 'red';
+    }
+
+    if (newState !== trafficLight.userData.state) {
+        trafficLight.userData.state = newState;
+
+        // Update light visuals
+        trafficLight.children.forEach(child => {
+            if (child.userData.lightType) {
+                const isActive = child.userData.lightType === newState;
+                child.material.emissive.setHex(isActive ? child.userData.emissiveColor : 0x000000);
+                child.material.emissiveIntensity = isActive ? 1.5 : 0;
+            }
+        });
+    }
+}
+
+// Create crossroad
+function createCrossroad(z) {
+    const crossroadGroup = new THREE.Group();
+    const curveX = getRoadCurveAt(z);
+
+    // Intersecting road surface
+    const crossRoadGeometry = new THREE.PlaneGeometry(25, 7);
+    const crossRoadMaterial = new THREE.MeshStandardMaterial({
+        color: 0x2a2a35,
+        roughness: 0.85,
+        metalness: 0.05
+    });
+    const crossRoad = new THREE.Mesh(crossRoadGeometry, crossRoadMaterial);
+    crossRoad.rotation.x = -Math.PI / 2;
+    crossRoad.position.set(curveX, 0.01, z);
+    crossRoad.receiveShadow = true;
+    crossroadGroup.add(crossRoad);
+
+    // Crosswalk stripes (zebra crossing)
+    const stripeMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.5
+    });
+
+    // Crosswalk on main road (perpendicular stripes)
+    for (let i = -3; i <= 3; i++) {
+        const stripeGeometry = new THREE.BoxGeometry(0.4, 0.02, 2.5);
+        const stripe = new THREE.Mesh(stripeGeometry, stripeMaterial);
+        stripe.position.set(curveX + i * 0.8, 0.02, z + 4.5);
+        crossroadGroup.add(stripe);
+
+        const stripe2 = new THREE.Mesh(stripeGeometry, stripeMaterial);
+        stripe2.position.set(curveX + i * 0.8, 0.02, z - 4.5);
+        crossroadGroup.add(stripe2);
+    }
+
+    // Crosswalk on cross street
+    for (let i = -3; i <= 3; i++) {
+        const stripeGeometry = new THREE.BoxGeometry(2.5, 0.02, 0.4);
+        const stripe = new THREE.Mesh(stripeGeometry, stripeMaterial);
+        stripe.position.set(curveX + 4.5, 0.02, z + i * 0.8);
+        crossroadGroup.add(stripe);
+
+        const stripe2 = new THREE.Mesh(stripeGeometry, stripeMaterial);
+        stripe2.position.set(curveX - 4.5, 0.02, z + i * 0.8);
+        crossroadGroup.add(stripe2);
+    }
+
+    // Stop lines
+    const stopLineGeometry = new THREE.BoxGeometry(7, 0.02, 0.3);
+    const stopLine1 = new THREE.Mesh(stopLineGeometry, stripeMaterial);
+    stopLine1.position.set(curveX, 0.02, z + 3.2);
+    crossroadGroup.add(stopLine1);
+
+    const stopLine2 = new THREE.Mesh(stopLineGeometry, stripeMaterial);
+    stopLine2.position.set(curveX, 0.02, z - 3.2);
+    crossroadGroup.add(stopLine2);
+
+    // Center intersection markings (yellow box)
+    const centerLineGeometry = new THREE.BoxGeometry(0.1, 0.02, 7);
+    const yellowLineMaterial = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.5 });
+
+    // Cross street edge lines
+    const crossEdgeGeometry = new THREE.BoxGeometry(0.1, 0.02, 7);
+    const leftCrossEdge = new THREE.Mesh(crossEdgeGeometry, stripeMaterial);
+    leftCrossEdge.rotation.y = Math.PI / 2;
+    leftCrossEdge.position.set(curveX - 10, 0.02, z);
+    crossroadGroup.add(leftCrossEdge);
+
+    const rightCrossEdge = new THREE.Mesh(crossEdgeGeometry, stripeMaterial);
+    rightCrossEdge.rotation.y = Math.PI / 2;
+    rightCrossEdge.position.set(curveX + 10, 0.02, z);
+    crossroadGroup.add(rightCrossEdge);
+
+    // Add traffic lights at corners
+    const trafficLight1 = createTrafficLight(curveX + 4, z + 4, 1);
+    trafficLight1.rotation.y = 0;
+    crossroadGroup.add(trafficLight1);
+    trafficLights.push(trafficLight1);
+
+    const trafficLight2 = createTrafficLight(curveX - 4, z - 4, -1);
+    trafficLight2.rotation.y = Math.PI;
+    crossroadGroup.add(trafficLight2);
+    trafficLights.push(trafficLight2);
+
+    // Side street traffic lights
+    const trafficLight3 = createTrafficLight(curveX + 4, z - 4, 1);
+    trafficLight3.rotation.y = -Math.PI / 2;
+    trafficLight3.userData.timer = 6; // Offset timing for cross traffic
+    crossroadGroup.add(trafficLight3);
+
+    const trafficLight4 = createTrafficLight(curveX - 4, z + 4, -1);
+    trafficLight4.rotation.y = Math.PI / 2;
+    trafficLight4.userData.timer = 6; // Offset timing for cross traffic
+    crossroadGroup.add(trafficLight4);
+
+    // Street signs
+    const signPostMaterial = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.6, roughness: 0.3 });
+
+    // Corner curbs
+    const curbMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.9 });
+    const curbGeometry = new THREE.BoxGeometry(1.5, 0.15, 1.5);
+
+    [[-4.5, -4.5], [-4.5, 4.5], [4.5, -4.5], [4.5, 4.5]].forEach(pos => {
+        const curb = new THREE.Mesh(curbGeometry, curbMaterial);
+        curb.position.set(curveX + pos[0], 0.08, z + pos[1]);
+        crossroadGroup.add(curb);
+    });
+
+    crossroadGroup.userData.isCrossroad = true;
+    crossroadGroup.userData.worldZ = z;
+
+    return crossroadGroup;
+}
+
+// Spawn crossroad with traffic lights
+function spawnCrossroad(z) {
+    const crossroad = createCrossroad(z);
+    crossroads.push(crossroad);
+    scene.add(crossroad);
+}
+
+// Check if player ran a red light
+function checkTrafficLightViolation() {
+    if (!playerCar || !gameActive) return;
+
+    trafficLights.forEach(light => {
+        if (light.userData.passed) return;
+
+        const lightZ = light.userData.worldZ || light.position.z;
+        const carZ = playerCar.position.z;
+
+        // Check if car just passed the traffic light
+        if (carZ < lightZ - 2 && carZ > lightZ - 5) {
+            // Only check traffic lights facing the player (main road)
+            const facingPlayer = Math.abs(light.rotation.y) < 0.1 || Math.abs(light.rotation.y - Math.PI) < 0.1;
+
+            if (facingPlayer && light.userData.state === 'red' && speed > 0.3) {
+                // Ran a red light!
+                light.userData.passed = true;
+                ranRedLights++;
+                score = Math.max(0, score - 50);
+                flashScreen('rgba(255, 100, 0, 0.3)');
+                playRedLightSound();
+            } else if (facingPlayer) {
+                light.userData.passed = true;
+            }
+        }
+    });
+}
+
+// Play red light violation sound
+function playRedLightSound() {
+    if (!audioInitialized || !audioContext) return;
+
+    // Warning horn sound
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+
+    osc.type = 'square';
+    osc.frequency.value = 400;
+    osc.frequency.linearRampToValueAtTime(300, audioContext.currentTime + 0.3);
+
+    gain.gain.value = 0.2;
+    gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.5);
+
+    osc.connect(gain);
+    gain.connect(masterGain);
+
+    osc.start();
+    osc.stop(audioContext.currentTime + 0.5);
+}
+
+// Update traffic lights
+function updateTrafficLights(deltaTime) {
+    trafficLights.forEach(light => {
+        updateTrafficLightState(light, deltaTime);
+    });
+
+    // Spawn new crossroads ahead
+    if (playerCar && playerCar.position.z < lastCrossroadZ - TRAFFIC_LIGHT_SPACING) {
+        lastCrossroadZ -= TRAFFIC_LIGHT_SPACING;
+        spawnCrossroad(lastCrossroadZ - 50);
+    }
+
+    // Remove crossroads that are too far behind
+    crossroads = crossroads.filter(crossroad => {
+        if (crossroad.userData.worldZ > playerCar.position.z + 40) {
+            // Remove associated traffic lights
+            crossroad.children.forEach(child => {
+                if (child.userData.isTrafficLight) {
+                    const index = trafficLights.indexOf(child);
+                    if (index > -1) trafficLights.splice(index, 1);
+                }
+            });
+            scene.remove(crossroad);
+            return false;
+        }
+        return true;
+    });
+
+    // Check for traffic light violations
+    checkTrafficLightViolation();
 }
 
 // Create a simple house
@@ -1296,6 +1620,10 @@ function createNatureElements() {
     for (let i = 0; i < 8; i++) {
         spawnPedestrian(-i * 12 - 20);
     }
+
+    // Create initial crossroads with traffic lights
+    spawnCrossroad(-50);
+    spawnCrossroad(-130);
 }
 
 // Generate environment objects at a specific Z position
@@ -1957,11 +2285,15 @@ function updateGame() {
     // Update pedestrians
     updatePedestrians();
 
+    // Update traffic lights and crossroads
+    updateTrafficLights(1 / 60);
+
     // Update HUD
     const displaySpeed = Math.floor(speed * 100);
     document.getElementById('speed').textContent = displaySpeed;
     document.getElementById('distance').textContent = Math.floor(distance);
     document.getElementById('pedestriansAvoided').textContent = pedestriansAvoided;
+    document.getElementById('redLightsRan').textContent = ranRedLights;
 
     // Update speedometer needle and arc
     updateSpeedometer(displaySpeed);
@@ -2060,6 +2392,21 @@ function startGame() {
     for (let i = 0; i < 8; i++) {
         spawnPedestrian(-i * 12 - 20);
     }
+
+    // Clear and reset traffic lights and crossroads
+    trafficLights.forEach(light => {
+        if (light.parent) light.parent.remove(light);
+    });
+    trafficLights = [];
+    crossroads.forEach(cr => scene.remove(cr));
+    crossroads = [];
+    lastCrossroadZ = -50;
+    lastTrafficLightZ = -50;
+    ranRedLights = 0;
+
+    // Spawn initial crossroads
+    spawnCrossroad(-50);
+    spawnCrossroad(-130);
 }
 
 // Restart game

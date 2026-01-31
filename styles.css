@@ -337,3 +337,21 @@ h1 {
 .pedestrian-counter:hover {
   box-shadow: 0 0 30px rgba(255, 107, 107, 0.8);
 }
+
+/* Traffic light counter styles */
+.traffic-counter {
+  border-color: #ffaa00;
+  box-shadow: 0 0 20px rgba(255, 170, 0, 0.5);
+}
+
+.traffic-counter .hud-label {
+  color: #ffaa00;
+}
+
+.traffic-counter .hud-value {
+  text-shadow: 0 0 10px #ffaa00;
+}
+
+.traffic-counter:hover {
+  box-shadow: 0 0 30px rgba(255, 170, 0, 0.8);
+}
