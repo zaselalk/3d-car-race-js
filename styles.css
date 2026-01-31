@@ -309,3 +309,31 @@ h1 {
 .speedometer-needle {
   animation: needleGlow 1s ease-in-out infinite;
 }
+
+/* Flash screen effect */
+@keyframes flashFade {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Pedestrian counter styles */
+.pedestrian-counter {
+  border-color: #ff6b6b;
+  box-shadow: 0 0 20px rgba(255, 107, 107, 0.5);
+}
+
+.pedestrian-counter .hud-label {
+  color: #ff6b6b;
+}
+
+.pedestrian-counter .hud-value {
+  text-shadow: 0 0 10px #ff6b6b;
+}
+
+.pedestrian-counter:hover {
+  box-shadow: 0 0 30px rgba(255, 107, 107, 0.8);
+}

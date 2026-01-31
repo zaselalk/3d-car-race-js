@@ -13,6 +13,12 @@ let environmentObjects = [];
 let lastTreeZ = 10;
 let ground;
 
+// Pedestrian system
+let pedestrians = [];
+let lastPedestrianZ = 0;
+let pedestriansAvoided = 0;
+let hitPedestrian = false;
+
 // Road curve system
 let roadSegments = [];
 let roadCurveOffset = 0;
@@ -968,6 +974,314 @@ function createGround() {
     return ground;
 }
 
+// Create a pedestrian - walking human figure
+function createPedestrian(x, z, direction) {
+    const pedestrianGroup = new THREE.Group();
+    const scale = 0.85 + Math.random() * 0.3;
+
+    // Clothing colors
+    const shirtColors = [0x3498db, 0xe74c3c, 0x2ecc71, 0xf39c12, 0x9b59b6, 0x1abc9c, 0xe91e63, 0x00bcd4];
+    const pantsColors = [0x2c3e50, 0x34495e, 0x1a252f, 0x4a4a4a, 0x2d3436];
+    const skinTones = [0xffdbac, 0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524];
+
+    const shirtColor = shirtColors[Math.floor(Math.random() * shirtColors.length)];
+    const pantsColor = pantsColors[Math.floor(Math.random() * pantsColors.length)];
+    const skinTone = skinTones[Math.floor(Math.random() * skinTones.length)];
+
+    const shirtMaterial = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.8 });
+    const pantsMaterial = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.7 });
+    const skinMaterial = new THREE.MeshStandardMaterial({ color: skinTone, roughness: 0.6 });
+    const hairMaterial = new THREE.MeshStandardMaterial({ color: 0x2c1810, roughness: 0.9 });
+
+    // Head
+    const headGeometry = new THREE.SphereGeometry(0.12 * scale, 8, 8);
+    const head = new THREE.Mesh(headGeometry, skinMaterial);
+    head.position.y = 1.55 * scale;
+    head.castShadow = true;
+    pedestrianGroup.add(head);
+
+    // Hair
+    const hairGeometry = new THREE.SphereGeometry(0.13 * scale, 8, 8);
+    const hair = new THREE.Mesh(hairGeometry, hairMaterial);
+    hair.position.y = 1.6 * scale;
+    hair.scale.set(1, 0.6, 1);
+    pedestrianGroup.add(hair);
+
+    // Torso/shirt
+    const torsoGeometry = new THREE.BoxGeometry(0.28 * scale, 0.4 * scale, 0.15 * scale);
+    const torso = new THREE.Mesh(torsoGeometry, shirtMaterial);
+    torso.position.y = 1.2 * scale;
+    torso.castShadow = true;
+    pedestrianGroup.add(torso);
+
+    // Arms
+    const armGeometry = new THREE.BoxGeometry(0.08 * scale, 0.35 * scale, 0.08 * scale);
+
+    const leftArm = new THREE.Mesh(armGeometry, shirtMaterial);
+    leftArm.position.set(-0.18 * scale, 1.15 * scale, 0);
+    leftArm.userData.isArm = true;
+    leftArm.userData.side = 'left';
+    pedestrianGroup.add(leftArm);
+
+    const rightArm = new THREE.Mesh(armGeometry, shirtMaterial);
+    rightArm.position.set(0.18 * scale, 1.15 * scale, 0);
+    rightArm.userData.isArm = true;
+    rightArm.userData.side = 'right';
+    pedestrianGroup.add(rightArm);
+
+    // Hands
+    const handGeometry = new THREE.SphereGeometry(0.04 * scale, 6, 6);
+
+    const leftHand = new THREE.Mesh(handGeometry, skinMaterial);
+    leftHand.position.set(-0.18 * scale, 0.95 * scale, 0);
+    leftHand.userData.isHand = true;
+    leftHand.userData.side = 'left';
+    pedestrianGroup.add(leftHand);
+
+    const rightHand = new THREE.Mesh(handGeometry, skinMaterial);
+    rightHand.position.set(0.18 * scale, 0.95 * scale, 0);
+    rightHand.userData.isHand = true;
+    rightHand.userData.side = 'right';
+    pedestrianGroup.add(rightHand);
+
+    // Legs/pants
+    const legGeometry = new THREE.BoxGeometry(0.1 * scale, 0.45 * scale, 0.1 * scale);
+
+    const leftLeg = new THREE.Mesh(legGeometry, pantsMaterial);
+    leftLeg.position.set(-0.08 * scale, 0.72 * scale, 0);
+    leftLeg.userData.isLeg = true;
+    leftLeg.userData.side = 'left';
+    leftLeg.castShadow = true;
+    pedestrianGroup.add(leftLeg);
+
+    const rightLeg = new THREE.Mesh(legGeometry, pantsMaterial);
+    rightLeg.position.set(0.08 * scale, 0.72 * scale, 0);
+    rightLeg.userData.isLeg = true;
+    rightLeg.userData.side = 'right';
+    rightLeg.castShadow = true;
+    pedestrianGroup.add(rightLeg);
+
+    // Feet/shoes
+    const shoeGeometry = new THREE.BoxGeometry(0.1 * scale, 0.06 * scale, 0.16 * scale);
+    const shoeMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 });
+
+    const leftShoe = new THREE.Mesh(shoeGeometry, shoeMaterial);
+    leftShoe.position.set(-0.08 * scale, 0.48 * scale, 0.02 * scale);
+    leftShoe.userData.isShoe = true;
+    leftShoe.userData.side = 'left';
+    pedestrianGroup.add(leftShoe);
+
+    const rightShoe = new THREE.Mesh(shoeGeometry, shoeMaterial);
+    rightShoe.position.set(0.08 * scale, 0.48 * scale, 0.02 * scale);
+    rightShoe.userData.isShoe = true;
+    rightShoe.userData.side = 'right';
+    pedestrianGroup.add(rightShoe);
+
+    // Set position and movement properties
+    pedestrianGroup.position.set(x, 0, z);
+    pedestrianGroup.userData.isPedestrian = true;
+    pedestrianGroup.userData.walkSpeed = 0.02 + Math.random() * 0.02;
+    pedestrianGroup.userData.walkPhase = Math.random() * Math.PI * 2;
+    pedestrianGroup.userData.direction = direction; // 1 = walking forward, -1 = walking backward
+    pedestrianGroup.userData.crossingRoad = false;
+    pedestrianGroup.userData.startX = x;
+    pedestrianGroup.userData.scale = scale;
+
+    // Randomly decide if pedestrian might cross the road
+    if (Math.random() > 0.7) {
+        pedestrianGroup.userData.crossingRoad = true;
+        pedestrianGroup.userData.crossDirection = x > 0 ? -1 : 1;
+    }
+
+    // Face the walking direction
+    pedestrianGroup.rotation.y = direction > 0 ? 0 : Math.PI;
+
+    return pedestrianGroup;
+}
+
+// Animate pedestrian walking
+function animatePedestrian(pedestrian, deltaTime) {
+    const walkSpeed = pedestrian.userData.walkSpeed;
+    const phase = pedestrian.userData.walkPhase;
+    const scale = pedestrian.userData.scale || 1;
+
+    // Update walk phase
+    pedestrian.userData.walkPhase += walkSpeed * 8;
+
+    // Animate limbs
+    pedestrian.children.forEach(child => {
+        if (child.userData.isLeg) {
+            const swing = Math.sin(phase) * 0.4;
+            if (child.userData.side === 'left') {
+                child.rotation.x = swing;
+                child.position.z = Math.sin(phase) * 0.05 * scale;
+            } else {
+                child.rotation.x = -swing;
+                child.position.z = -Math.sin(phase) * 0.05 * scale;
+            }
+        }
+        if (child.userData.isArm || child.userData.isHand) {
+            const swing = Math.sin(phase) * 0.3;
+            if (child.userData.side === 'left') {
+                child.rotation.x = -swing;
+            } else {
+                child.rotation.x = swing;
+            }
+        }
+        if (child.userData.isShoe) {
+            if (child.userData.side === 'left') {
+                child.position.z = 0.02 * scale + Math.sin(phase) * 0.05 * scale;
+            } else {
+                child.position.z = 0.02 * scale - Math.sin(phase) * 0.05 * scale;
+            }
+        }
+    });
+
+    // Move pedestrian
+    const direction = pedestrian.userData.direction;
+    pedestrian.position.z -= walkSpeed * direction * 0.5;
+
+    // Handle road crossing
+    if (pedestrian.userData.crossingRoad) {
+        const crossDir = pedestrian.userData.crossDirection;
+        pedestrian.position.x += crossDir * walkSpeed * 0.3;
+
+        // Rotate to face crossing direction
+        const targetRotation = crossDir > 0 ? -Math.PI / 2 : Math.PI / 2;
+        pedestrian.rotation.y += (targetRotation - pedestrian.rotation.y) * 0.05;
+    }
+}
+
+// Spawn pedestrians along the road
+function spawnPedestrian(z) {
+    const curveX = getRoadCurveAt(z);
+    const side = Math.random() > 0.5 ? 1 : -1;
+    const offsetFromRoad = 3.5 + Math.random() * 1.5; // On the sidewalk area
+    const x = curveX + side * offsetFromRoad;
+    const direction = Math.random() > 0.5 ? 1 : -1;
+
+    const pedestrian = createPedestrian(x, z, direction);
+    pedestrian.castShadow = true;
+    pedestrians.push(pedestrian);
+    scene.add(pedestrian);
+}
+
+// Check collision with pedestrian
+function checkPedestrianCollision() {
+    if (!playerCar || !gameActive) return;
+
+    const carBox = new THREE.Box3().setFromObject(playerCar);
+
+    pedestrians.forEach(pedestrian => {
+        if (pedestrian.userData.hit) return;
+
+        const pedestrianBox = new THREE.Box3().setFromObject(pedestrian);
+
+        if (carBox.intersectsBox(pedestrianBox)) {
+            // Collision with pedestrian!
+            pedestrian.userData.hit = true;
+            hitPedestrian = true;
+
+            // Play collision sound
+            playPedestrianHitSound();
+
+            // Pedestrian reaction - fall down
+            pedestrian.rotation.x = -Math.PI / 2;
+            pedestrian.position.y = 0.3;
+
+            // Slow down the car
+            speed = Math.max(speed * 0.5, 0);
+
+            // Penalty
+            score = Math.max(0, score - 100);
+
+            // Flash screen red
+            flashScreen('rgba(255, 0, 0, 0.4)');
+        }
+    });
+}
+
+// Play pedestrian hit sound
+function playPedestrianHitSound() {
+    if (!audioInitialized || !audioContext) return;
+
+    // Impact thud
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.value = 80;
+    osc.frequency.linearRampToValueAtTime(40, audioContext.currentTime + 0.2);
+
+    gain.gain.value = 0.4;
+    gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.3);
+
+    const filter = audioContext.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 200;
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(masterGain);
+
+    osc.start();
+    osc.stop(audioContext.currentTime + 0.3);
+}
+
+// Flash screen effect
+function flashScreen(color) {
+    const flash = document.createElement('div');
+    flash.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: ${color};
+        pointer-events: none;
+        z-index: 1000;
+        animation: flashFade 0.3s ease-out forwards;
+    `;
+    document.body.appendChild(flash);
+
+    setTimeout(() => flash.remove(), 300);
+}
+
+// Update pedestrians
+function updatePedestrians() {
+    if (!playerCar) return;
+
+    // Spawn new pedestrians ahead
+    if (playerCar.position.z < lastPedestrianZ - 8) {
+        if (Math.random() > 0.4) { // 60% chance to spawn
+            spawnPedestrian(lastPedestrianZ - 80 - Math.random() * 20);
+        }
+        lastPedestrianZ -= 8;
+    }
+
+    // Update and animate pedestrians
+    pedestrians.forEach(pedestrian => {
+        if (!pedestrian.userData.hit) {
+            animatePedestrian(pedestrian, 1 / 60);
+        }
+    });
+
+    // Remove pedestrians that are too far behind
+    pedestrians = pedestrians.filter(pedestrian => {
+        if (pedestrian.position.z > playerCar.position.z + 30) {
+            if (!pedestrian.userData.hit) {
+                pedestriansAvoided++;
+            }
+            scene.remove(pedestrian);
+            return false;
+        }
+        return true;
+    });
+
+    // Check collisions
+    checkPedestrianCollision();
+}
+
 // Populate nature elements along the road
 function createNatureElements() {
     ground = createGround();
@@ -976,6 +1290,11 @@ function createNatureElements() {
     for (let i = 0; i < 20; i++) {
         const z = -i * 5 + 10;
         generateEnvironmentAtZ(z);
+    }
+
+    // Create initial pedestrians
+    for (let i = 0; i < 8; i++) {
+        spawnPedestrian(-i * 12 - 20);
     }
 }
 
@@ -1635,10 +1954,14 @@ function updateGame() {
     // Update environment dynamically
     updateEnvironment();
 
+    // Update pedestrians
+    updatePedestrians();
+
     // Update HUD
     const displaySpeed = Math.floor(speed * 100);
     document.getElementById('speed').textContent = displaySpeed;
     document.getElementById('distance').textContent = Math.floor(distance);
+    document.getElementById('pedestriansAvoided').textContent = pedestriansAvoided;
 
     // Update speedometer needle and arc
     updateSpeedometer(displaySpeed);
@@ -1725,6 +2048,18 @@ function startGame() {
 
     // Reset environment tracking
     lastTreeZ = 10;
+
+    // Clear and reset pedestrians
+    pedestrians.forEach(p => scene.remove(p));
+    pedestrians = [];
+    lastPedestrianZ = 0;
+    pedestriansAvoided = 0;
+    hitPedestrian = false;
+
+    // Spawn initial pedestrians
+    for (let i = 0; i < 8; i++) {
+        spawnPedestrian(-i * 12 - 20);
+    }
 }
 
 // Restart game

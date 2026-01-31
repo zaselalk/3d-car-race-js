@@ -13,11 +13,15 @@
 
   <div id="ui">
     <div id="hud" style="display: none;">
+      <div class="hud-item pedestrian-counter">
+        <div class="hud-label">🚶 AVOIDED</div>
+        <div class="hud-value" id="pedestriansAvoided">0</div>
+      </div>
       <div class="hud-item">
         <div class="hud-label">DISTANCE</div>
         <div class="hud-value" id="distance">0</div>
       </div>
-      
+
       <!-- Speedometer -->
       <div class="speedometer">
         <svg viewBox="0 0 200 120" class="speedometer-svg">
@@ -60,7 +64,7 @@
         <strong>← →</strong> Steer Left/Right<br>
         <strong>↑</strong> Accelerate<br>
         <strong>↓</strong> Brake<br>
-        Enjoy a scenic drive through the forest!
+        <strong style="color: #ff6b6b;">⚠️ Watch out for pedestrians!</strong>
       </div>
     </div>
 
