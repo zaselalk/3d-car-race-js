@@ -1639,7 +1639,7 @@ function updateGame() {
     const displaySpeed = Math.floor(speed * 100);
     document.getElementById('speed').textContent = displaySpeed;
     document.getElementById('distance').textContent = Math.floor(distance);
-    
+
     // Update speedometer needle and arc
     updateSpeedometer(displaySpeed);
 }
@@ -1648,14 +1648,14 @@ function updateGame() {
 function updateSpeedometer(speedValue) {
     const maxSpeed = 220; // Max speed on dial
     const normalizedSpeed = Math.min(speedValue / maxSpeed, 1);
-    
+
     // Calculate needle rotation (from -90 degrees to 90 degrees)
     const needleAngle = -90 + (normalizedSpeed * 180);
     const needle = document.getElementById('speedNeedle');
     if (needle) {
         needle.style.transform = `rotate(${needleAngle}deg)`;
     }
-    
+
     // Calculate arc path
     const speedArc = document.getElementById('speedArc');
     if (speedArc) {
@@ -1663,16 +1663,16 @@ function updateSpeedometer(speedValue) {
         const angle = normalizedSpeed * Math.PI; // 0 to PI radians
         const endX = 100 - Math.cos(angle) * 80;
         const endY = 100 - Math.sin(angle) * 80;
-        
+
         // Determine if we need large arc flag
         const largeArcFlag = normalizedSpeed > 0.5 ? 1 : 0;
-        
+
         if (normalizedSpeed > 0.01) {
             speedArc.setAttribute('d', `M 20 100 A 80 80 0 ${largeArcFlag} 1 ${endX} ${endY}`);
         } else {
             speedArc.setAttribute('d', 'M 20 100 A 80 80 0 0 1 20 100');
         }
-        
+
         // Change color based on speed
         if (normalizedSpeed > 0.8) {
             speedArc.style.stroke = '#ff3333';
