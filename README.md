@@ -1,4 +1,4 @@
-# 🏎️ Rush City - 3D Car Racing Game
+# 🏎️ Rush City - 3D Car Driving Game
 
 A thrilling 3D browser-based racing game built with Three.js featuring neon aesthetics, realistic physics, and challenging gameplay mechanics.
 
